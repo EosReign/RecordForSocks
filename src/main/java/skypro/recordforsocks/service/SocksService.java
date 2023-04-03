@@ -1,73 +1,113 @@
 package skypro.recordforsocks.service;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import skypro.recordforsocks.component.RecordMapper;
-import skypro.recordforsocks.dto.RecordSocksBatch;
+import skypro.recordforsocks.dto.RecordSocks;
 import skypro.recordforsocks.entity.Socks;
-import skypro.recordforsocks.entity.SocksBatch;
+import skypro.recordforsocks.exception.*;
+import skypro.recordforsocks.repository.SocksRepository;
 
-import skypro.recordforsocks.repository.SocksBatchRepository;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class SocksService {
 
-    private final SocksBatchRepository socksBatchRepository;
+    private final SocksRepository socksRepository;
     private final RecordMapper recordMapper;
 
-    private SocksService(SocksBatchRepository socksBatchRepository,
+    private SocksService(SocksRepository socksRepository,
                          RecordMapper recordMapper) {
-        this.socksBatchRepository = socksBatchRepository;
+        this.socksRepository = socksRepository;
         this.recordMapper = recordMapper;
     }
 
-    public ResponseEntity<RecordSocksBatch> addSocksBatch(RecordSocksBatch recordSocksBatch) {
-        SocksBatch batch = recordMapper.toEntity(recordSocksBatch);
-        SocksBatch newBatch;
-        Socks socks = batch.getSocks();
-
-        if (socksBatchRepository.existsSocksBatchBySocks_ColorEqualsAnd_CottonPartEquals(socks.getColor().toString(), socks.getCottonPart())) {
-            newBatch = socksBatchRepository.findSocksBatchBySocks_ColorEqualsAnd_CottonPartEquals(socks.getColor().toString(), socks.getCottonPart());
-            newBatch.setSocksCount(newBatch.getSocksCount() + batch.getSocksCount());
-            socksBatchRepository.save(newBatch);
+    public ResponseEntity<RecordSocks> addSocks(RecordSocks recordSocks) {
+        checkSocks(recordSocks.getColor(), recordSocks.getCottonPart());
+        Socks socks = recordMapper.toEntity(recordSocks);
+        Socks newSocks;
+        if (socksRepository.existsSocksByColorIgnoreCaseAndCottonPartEquals(socks.getColor().toString(), socks.getCottonPart())) {
+            newSocks = socksRepository.findByColorIgnoreCaseAndCottonPartEquals(socks.getColor().toString(), socks.getCottonPart());
+            newSocks.setSocksCount(newSocks.getSocksCount() + socks.getSocksCount());
+            socksRepository.save(newSocks);
         } else {
-            socksBatchRepository.save(batch);
+            socksRepository.save(socks);
         }
-        return ResponseEntity.ok(recordSocksBatch);
+        return ResponseEntity.ok(recordSocks);
     }
 
-    public ResponseEntity<RecordSocksBatch> outcomeSocks(RecordSocksBatch recordSocksBatch) {
-        SocksBatch batch = recordMapper.toEntity(recordSocksBatch);
-        Socks socks = batch.getSocks();
-        SocksBatch newBatch;
-
-        if (socksBatchRepository.existsSocksBatchBySocks_ColorEqualsAnd_CottonPartEquals(socks.getColor().toString(), socks.getCottonPart())) {
-            newBatch = socksBatchRepository.findSocksBatchBySocks_ColorEqualsAnd_CottonPartEquals(socks.getColor().toString(), socks.getCottonPart());
-            newBatch.setSocksCount(newBatch.getSocksCount() - batch.getSocksCount());
-            socksBatchRepository.save(newBatch);
+    public ResponseEntity<RecordSocks> outcomeSocks(RecordSocks recordSocks) {
+        checkSocks(recordSocks.getColor(), recordSocks.getCottonPart());
+        Socks socks = recordMapper.toEntity(recordSocks);
+        Socks newSocks;
+        if (socksRepository.existsSocksByColorIgnoreCaseAndCottonPartEquals(socks.getColor().toString(), socks.getCottonPart())) {
+            newSocks = socksRepository.findByColorIgnoreCaseAndCottonPartEquals(socks.getColor().toString(), socks.getCottonPart());
+            if (newSocks.getSocksCount() - socks.getSocksCount() > 0) {
+                newSocks.setSocksCount(newSocks.getSocksCount() - socks.getSocksCount());
+                socksRepository.save(newSocks);
+            } else {
+                throw new NegativeSocksCountException();
+            }
         } else {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            throw new SocksNotExistInDBException();
         }
-        return ResponseEntity.ok(recordSocksBatch);
+        return ResponseEntity.ok(recordSocks);
     }
 
     public ResponseEntity<Integer> getSocks(String color, String operation, int cottonPart) {
-        if (cottonPart > 100) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        SocksBatch socksBatch;
+        checkSocks(color, cottonPart);
+        checkOperation(operation);
+        checkSocksExisting(color, operation, cottonPart);
 
+        Integer socksCount = 0;
+        List<Socks> newSocksList = new ArrayList<>();
+        Socks newSocks = new Socks();
         if (operation.equalsIgnoreCase("moreThan")) {
-            socksBatch = socksBatchRepository.findSocksBatchBySocks_ColorEqualsAndCottonPartIsGreaterThan(color, cottonPart);
+            for (Socks s: socksRepository.findByColorIgnoreCaseAndCottonPartGreaterThan(color, cottonPart)) {
+                socksCount+= s.getSocksCount();
+            }
         } else if (operation.equalsIgnoreCase("lessThan")) {
-            socksBatch = socksBatchRepository.findSocksBatchBySocks_ColorEqualsAnd_CottonPartIsLessThan(color, cottonPart);
-        } else if (operation.equalsIgnoreCase("equal")) {
-            socksBatch = socksBatchRepository.findSocksBatchBySocks_ColorEqualsAnd_CottonPartEquals(color, cottonPart);
+            newSocksList.addAll(socksRepository.findByColorIgnoreCaseAndCottonPartLessThan(color.toUpperCase(), cottonPart));
+            for (Socks s: newSocksList) {
+                socksCount+= s.getSocksCount();
+            }
         } else {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            newSocks = socksRepository.findByColorIgnoreCaseAndCottonPartEquals(color.toUpperCase(), cottonPart);
+            socksCount = newSocks.getSocksCount();
         }
-        return ResponseEntity.ok(socksBatch.getSocksCount());
+
+        return ResponseEntity.ok(socksCount);
     }
+
+    private void checkSocks(String color, int cottonPart) {
+        if (cottonPart > 100) {
+            throw new CottonsPartContentNotExistException();
+        }
+    }
+
+    private void checkOperation(String operation) {
+        if (!(operation.equalsIgnoreCase("moreThan") || operation.equalsIgnoreCase("lessThan") || operation.equalsIgnoreCase("equal"))) {
+            throw new WrongRequestOperation();
+        }
+    }
+
+    private void checkSocksExisting(String color, String operation, int cottonPart) {
+        if (operation.equalsIgnoreCase("moreThan")) {
+            if (!socksRepository.existsSocksByColorIgnoreCaseAndCottonPartGreaterThan(color, cottonPart)) {
+                throw new SocksNotExistInDBException();
+            }
+        } else if (operation.equalsIgnoreCase("lessThan")) {
+            if (!socksRepository.existsSocksByColorIgnoreCaseAndCottonPartLessThan(color, cottonPart)) {
+                throw new SocksNotExistInDBException();
+            }
+        } else {
+            if (!socksRepository.existsSocksByColorIgnoreCaseAndCottonPartEquals(color, cottonPart)) {
+                throw new SocksNotExistInDBException();
+            }
+        }
+    }
+
+
 
 }
