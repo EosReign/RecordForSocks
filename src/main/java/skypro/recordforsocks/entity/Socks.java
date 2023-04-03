@@ -3,7 +3,6 @@ package skypro.recordforsocks.entity;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import skypro.recordforsocks.enums.Color;
 
 import javax.persistence.*;
 
@@ -19,10 +18,12 @@ public class Socks {
     @Column(name = "id")
     private Long id;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "color")
-    private Color color;
+    private String color;
 
     @Column(name = "cotton_part")
     private int cottonPart;
+
+    @Column(name = "socks_count")
+    private int socksCount;
 }

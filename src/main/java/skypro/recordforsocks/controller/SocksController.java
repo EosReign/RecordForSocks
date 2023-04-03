@@ -2,7 +2,7 @@ package skypro.recordforsocks.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import skypro.recordforsocks.dto.RecordSocksBatch;
+import skypro.recordforsocks.dto.RecordSocks;
 import skypro.recordforsocks.service.SocksService;
 
 @RestController
@@ -15,13 +15,13 @@ public class SocksController {
     }
 
     @PostMapping("/socks/income")
-    public ResponseEntity<RecordSocksBatch> incomeSocks(@RequestBody RecordSocksBatch recordSocksBatch) {
-        return socksService.addSocksBatch(recordSocksBatch);
+    public ResponseEntity<RecordSocks> incomeSocks(@RequestBody RecordSocks recordSocks) {
+        return socksService.addSocks(recordSocks);
     }
 
     @PostMapping("/socks/outcome")
-    public ResponseEntity<RecordSocksBatch> outcomeSocks(@RequestBody RecordSocksBatch recordSocksBatch) {
-        return socksService.outcomeSocks(recordSocksBatch);
+    public ResponseEntity<RecordSocks> outcomeSocks(@RequestBody RecordSocks recordSocks) {
+        return socksService.outcomeSocks(recordSocks);
     }
 
     @GetMapping("/socks")
